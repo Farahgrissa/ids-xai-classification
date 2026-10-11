@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Installer les dépendances
+        run: pip install -r requirements-dev.txt
+      - name: Qualité du code (ruff)
+        run: ruff check .
+      - name: Tests (données synthétiques au format CIC-IDS2018)
+        run: pytest -q
+
+  image-api:
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construire l'image Docker de l'API
+        if: hashFiles('models/modele_api.joblib') != ''
+        run: docker build -t ids-xai-api .
+      - name: Tester l'image (route /health)
+        if: hashFiles('models/modele_api.joblib') != ''
+        run: |
+          docker run -d -p 7860:7860 --name api ids-xai-api
+          for i in $(seq 1 20); do curl -sf localhost:7860/health && exit 0; sleep 2; done
+          docker logs api; exit 1

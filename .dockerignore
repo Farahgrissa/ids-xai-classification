@@ -1,0 +1,6 @@
+*
+!requirements-api.txt
+!ids_xai/
+!api/
+!models/modele_api.joblib
+**/__pycache__

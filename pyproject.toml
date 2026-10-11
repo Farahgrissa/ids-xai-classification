@@ -1,0 +1,17 @@
+[project]
+name = "ids-xai"
+version = "0.1.0"
+description = "Détection d'intrusion réseau explicable (CSE-CIC-IDS2018) – application Streamlit et API FastAPI"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E402"]

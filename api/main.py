@@ -1,0 +1,133 @@
+from __future__ import annotations
+
+import os
+import sys
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any
+
+import joblib
+import numpy as np
+import pandas as pd
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from ids_xai import __version__  # noqa: E402
+from ids_xai.artefacts import FICHIER_API  # noqa: E402
+
+CHEMIN_MODELE = Path(os.getenv("MODELE_CHEMIN", FICHIER_API))
+ETAT: dict[str, Any] = {}
+
+
+@asynccontextmanager
+async def cycle_de_vie(app: FastAPI):
+    ETAT["bundle"] = joblib.load(CHEMIN_MODELE) if CHEMIN_MODELE.exists() else None
+    yield
+    ETAT.clear()
+
+
+app = FastAPI(
+    title="API de détection d'intrusion explicable",
+    description=(
+        "Classe des flux réseau (CSE-CIC-IDS2018, format CICFlowMeter) en **normal** ou **attaque** "
+        "avec le modèle retenu (XGBoost).\n\n"
+        "- `GET /exemple` fournit un flux prêt à envoyer ;\n"
+        "- `POST /predict` renvoie la probabilité d'attaque et la décision au seuil choisi ;\n"
+        "- `POST /explain` renverra les contributions SHAP et la phrase d'explication (module 5)."
+    ),
+    version=__version__,
+    lifespan=cycle_de_vie,
+)
+
+
+class RequetePrediction(BaseModel):
+    flux: list[dict[str, float | int | str | None]] = Field(
+        ..., min_length=1, max_length=10_000,
+        description="Un ou plusieurs flux : dictionnaire {nom de variable: valeur}. "
+                    "La liste des variables attendues est donnée par GET /model-info.")
+    seuil: float | None = Field(None, ge=0, le=1, description="Seuil de décision (défaut : seuil du modèle)")
+
+
+class ResultatFlux(BaseModel):
+    probabilite_attaque: float
+    decision: str
+    niveau: str
+
+
+class ReponsePrediction(BaseModel):
+    modele: str
+    seuil: float
+    resultats: list[ResultatFlux]
+    variables_ignorees: list[str] = []
+
+
+def _bundle() -> dict:
+    if ETAT.get("bundle") is None:
+        raise HTTPException(503, f"Modèle introuvable ({CHEMIN_MODELE}). Lancez scripts/entrainer.py.")
+    return ETAT["bundle"]
+
+
+def _vers_dataframe(flux: list[dict], schema: dict[str, str]) -> tuple[pd.DataFrame, list[str]]:
+    manquantes = sorted({v for f in flux for v in schema if v not in f})
+    if manquantes:
+        raise HTTPException(422, {"message": "Variables manquantes", "variables": manquantes})
+    ignorees = sorted({k for f in flux for k in f if k not in schema})
+    df = pd.DataFrame(flux)[list(schema)]
+    for col, type_ in schema.items():
+        if type_ == "num":
+            df[col] = pd.to_numeric(df[col], errors="coerce").replace([np.inf, -np.inf], np.nan)
+        else:
+            df[col] = df[col].astype(str).str.replace(r"\.0$", "", regex=True)
+    return df, ignorees
+
+
+def _niveau(p: float, seuil: float) -> str:
+    if p >= max(seuil, 0.95):
+        return "critique"
+    if p >= seuil:
+        return "élevé"
+    if p >= seuil / 2:
+        return "à surveiller"
+    return "faible"
+
+
+@app.get("/health", tags=["Service"])
+def health():
+    """Vérifie que l'API répond et que le modèle est chargé."""
+    return {"statut": "ok", "modele_charge": ETAT.get("bundle") is not None}
+
+
+@app.get("/model-info", tags=["Service"])
+def model_info():
+    """Modèle utilisé, variables attendues (avec leur type), seuil, métriques sur le test, versions."""
+    b = _bundle()
+    return {"modele": b["nom"], "seuil_par_defaut": b["seuil"], "variables": b["schema"],
+            "metriques_test": b["metriques"], "versions": b["versions"], "entraine_le": b["date"]}
+
+
+@app.get("/exemple", tags=["Service"])
+def exemple():
+    """Un flux typique (médianes du jeu d'entraînement), à modifier puis envoyer à /predict."""
+    return {"flux": [_bundle().get("exemple", {})]}
+
+
+@app.post("/predict", response_model=ReponsePrediction, tags=["Prédiction"])
+def predict(req: RequetePrediction):
+    """Probabilité d'attaque et décision pour chaque flux."""
+    b = _bundle()
+    seuil = b["seuil"] if req.seuil is None else req.seuil
+    df, ignorees = _vers_dataframe(req.flux, b["schema"])
+    probas = b["pipeline"].predict_proba(df)[:, 1]
+    return ReponsePrediction(
+        modele=b["nom"], seuil=seuil, variables_ignorees=ignorees,
+        resultats=[ResultatFlux(probabilite_attaque=round(float(p), 6),
+                                decision="attaque" if p >= seuil else "normal",
+                                niveau=_niveau(float(p), seuil)) for p in probas])
+
+
+@app.post("/explain", tags=["Explication"], status_code=501)
+def explain(req: RequetePrediction):
+    """Contributions SHAP + phrase de synthèse — **à compléter au module 5**."""
+    raise HTTPException(501, "Explications SHAP/LIME disponibles après le module 5.")

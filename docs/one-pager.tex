@@ -1,0 +1,211 @@
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage[a4paper,left=10mm,right=10mm,top=9mm,bottom=8mm]{geometry}
+\usepackage[table]{xcolor}
+\usepackage{tabularx,booktabs}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage{microtype}
+\usepackage{hyperref}           
+\hypersetup{colorlinks=true, urlcolor=orange, linkcolor=orange,
+            pdftitle={Détection d'intrusion réseau explicable}, pdfauthor={Farah Grissa}}
+\newcommand{\github}{\href{https://github.com/Farahgrissa/ids-xai-classification}{github.com/Farahgrissa/ids-xai-classification}}
+
+% --- Couleurs ---------------------------------------------------------------
+\definecolor{orange}{HTML}{D9480F}
+\definecolor{rouge}{HTML}{B42318}
+\definecolor{encre}{HTML}{1B2430}
+\definecolor{gris}{HTML}{5B6675}
+\definecolor{trait}{HTML}{D9DEE5}
+\definecolor{fondkpi}{HTML}{FFF4EC}
+\definecolor{fondrouge}{HTML}{FDF3F2}
+\definecolor{fondligne}{HTML}{FFE8D9}
+
+\color{encre}
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{2pt}
+\frenchsetup{StandardLists=true}  
+
+% --- Titres de section ----------------------------------------------------------
+\newcommand{\rubrique}[1]{%
+  \vspace{4pt}%
+  {\color{orange}\bfseries\small\MakeUppercase{#1}}\par\vspace{-3pt}%
+  {\color{trait}\rule{\linewidth}{0.5pt}}\par\vspace{1pt}}
+
+% --- Listes compactes -------------------------------------------------------------
+\setlist[itemize]{leftmargin=3.2mm, itemsep=1.2pt, topsep=1pt, parsep=0pt,
+                  label={\color{orange}\scriptsize$\bullet$}}
+
+% --- Indicateurs clés ---------------------------------------------------------------
+\newcommand{\kpi}[2]{%
+  \begin{tcolorbox}[colback=fondkpi, colframe=fondkpi, arc=1.2mm, boxrule=0pt,
+                    left=1.6mm, right=1.6mm, top=1.4mm, bottom=1.2mm, width=\linewidth,
+                    height=15.5mm, valign=top]
+    \raggedright
+    {\color{orange}\bfseries\Large #1}\par\vspace{2pt}
+    {\color{gris}\scriptsize #2}
+  \end{tcolorbox}}
+
+% --- Encadrés -----------------------------------------------------------------------
+\newtcolorbox{alerte}{colback=fondrouge, colframe=rouge, boxrule=0pt, leftrule=0.9mm,
+  arc=0pt, left=2mm, right=2mm, top=1.2mm, bottom=1.2mm, fontupper=\fontsize{8.7}{11.3}\selectfont}
+\newtcolorbox{conseil}{colback=fondkpi, colframe=orange, boxrule=0pt, leftrule=0.9mm,
+  arc=0pt, left=1.2mm, right=2mm, top=1mm, bottom=1mm, fontupper=\fontsize{8.7}{11.3}\selectfont}
+
+\begin{document}
+\fontsize{8.7}{11.3}\selectfont
+
+% =================================================================================
+% En-tête
+% =================================================================================
+{\color{orange}\bfseries\fontsize{19}{22}\selectfont Détection d'intrusion réseau explicable}\par
+\vspace{2pt}
+{\color{gris}\small Classification supervisée et explicable de flux réseau (CSE-CIC-IDS2018, infrastructure AWS) ---
+Projet Challenge 1, Data Mining, ENSI 2026-2027 --- Farah Grissa}\par
+\vspace{1pt}
+{\color{gris}\scriptsize \textbf{\color{encre}Code :} \github
+\quad·\quad \textbf{\color{encre}Application :} Streamlit Community Cloud
+\quad·\quad \textbf{\color{encre}API :} FastAPI (Hugging Face Spaces)}\par
+\vspace{2pt}
+{\color{orange}\rule{\linewidth}{1.4pt}}\par
+\vspace{3pt}
+
+% =================================================================================
+% Indicateurs clés
+% =================================================================================
+\noindent
+\begin{minipage}[t]{0.193\linewidth}\kpi{37\,395}{flux analysés après nettoyage (27\,\% d'attaques)}\end{minipage}\hfill
+\begin{minipage}[t]{0.193\linewidth}\kpi{0,994}{PR-AUC de XGBoost sur un jeu de test jamais vu}\end{minipage}\hfill
+\begin{minipage}[t]{0.193\linewidth}\kpi{98\,\%}{des attaques détectées (rappel, seuil 0,5)}\end{minipage}\hfill
+\begin{minipage}[t]{0.193\linewidth}\kpi{$\approx$\,1\,\%}{du trafic normal signalé à tort}\end{minipage}\hfill
+\begin{minipage}[t]{0.193\linewidth}\kpi{4 ms}{pour classer 1\,000 flux : compatible temps réel}\end{minipage}
+
+\vspace{2pt}
+
+% =================================================================================
+% Colonne gauche
+% =================================================================================
+\noindent
+\begin{minipage}[t]{0.485\linewidth}
+
+\rubrique{Problème métier}
+Un centre opérationnel de sécurité (SOC) reçoit des millions de flux réseau par jour. Il lui faut un détecteur
+qui \textbf{repère les attaques sans noyer les analystes sous les fausses alertes}, et qui
+\textbf{justifie chaque alerte} pour qu'elle soit vérifiée en quelques secondes.
+
+\rubrique{Données}
+\begin{itemize}
+  \item \textbf{CSE-CIC-IDS2018}, trafic capturé sur AWS, téléchargé automatiquement depuis le bucket S3 public.
+  \item 3 familles d'attaques : \textbf{force brute} (FTP, SSH), \textbf{déni de service} (Hulk, SlowHTTPTest),
+        \textbf{botnet}. Cible binaire : normal / attaque.
+  \item \textbf{Qualité :} 21\,\% de doublons supprimés ; étiquettes incohérentes détectées (flux identiques
+        étiquetés FTP et SlowHTTPTest).
+  \item \textbf{Raccourcis exclus :} heure, port de destination et variables d'« empreinte système »
+        (taille de fenêtre TCP), qui identifient la machine plutôt que le comportement.
+\end{itemize}
+
+\rubrique{Démarche et meilleur modèle}
+Cinq modèles comparés en validation croisée stratifiée (5 plis), hyperparamètres optimisés (GridSearch,
+RandomizedSearch), critère \textbf{PR-AUC} adapté au déséquilibre des classes.
+
+\vspace{2pt}
+{\fontsize{8}{10}\selectfont
+\renewcommand{\arraystretch}{1.2}
+\begin{tabularx}{\linewidth}{@{}Xrrrr@{}}
+  \toprule
+  \textcolor{gris}{\textbf{Modèle (jeu de test)}} & \textcolor{gris}{\textbf{PR-AUC}} &
+  \textcolor{gris}{\textbf{Rappel}} & \textcolor{gris}{\textbf{Précision}} & \textcolor{gris}{\textbf{ms / 1\,000}} \\
+  \midrule
+  \rowcolor{fondligne} \textbf{XGBoost (retenu)} & \textbf{0,994} & \textbf{0,982} & \textbf{0,973} & \textbf{4} \\
+  Random Forest         & 0,993 & 0,981 & 0,976 & 11 \\
+  Arbre de décision     & 0,985 & 0,979 & 0,968 & 3 \\
+  KNN                   & 0,977 & 0,978 & 0,970 & 53 \\
+  Régression logistique & 0,898 & 0,960 & 0,815 & 4 \\
+  \bottomrule
+\end{tabularx}}
+
+\vspace{3pt}
+XGBoost égale Random Forest en performance, prédit 2 à 3 fois plus vite et ne surapprend pas
+(écart validation / test $<$ 0,003, donc aucune fuite de données).
+
+\rubrique{Résultats en conditions réelles}
+Sur le test, XGBoost manque environ 37 attaques sur 2\,043, principalement des DoS Hulk dont le serveur
+saturé ne répond plus (flux vides, proches de connexions normales interrompues).
+
+\begin{alerte}
+\textbf{Effet du taux de base.} Le test contient 27\,\% d'attaques, un vrai réseau moins de 1\,\%.
+À taux de fausses alertes égal, la précision passe alors de 97\,\% à \textbf{environ 50\,\%} :
+une alerte sur deux serait fausse. Relever le seuil de 0,5 à 0,9 n'apporte que quelques points
+de précision et double le nombre d'attaques manquées.
+\end{alerte}
+
+\end{minipage}\hfill
+% =================================================================================
+% Colonne droite
+% =================================================================================
+\begin{minipage}[t]{0.485\linewidth}
+
+\rubrique{Explications clés}
+\begin{itemize}
+  \item \textbf{Taille des paquets} (variable la plus discriminante) : 52\,\% d'attaques parmi les flux à
+        paquets de moins de 65 octets, 3\,\% au-delà de 161 octets. Les attaques envoient des paquets vides
+        ou minimes.
+  \item \textbf{Durée du flux} : 68\,\% d'attaques entre 1 et 27 ms, à peine 1\,\% au-delà de 1,6 s.
+        Les outils automatisés ouvrent, envoient et coupent ; les utilisateurs gardent leurs connexions ouvertes.
+  \item \textbf{Rythme} : un écart de l'ordre de la milliseconde entre paquets signale un outil automatisé
+        (62\,\% d'attaques), une rafale de paquets un transfert normal (moins de 2\,\%).
+  \item \textbf{Relations non linéaires} : le risque se concentre au milieu des plages de valeurs, ce qui
+        explique l'avantage des modèles à base d'arbres.
+\end{itemize}
+{\color{gris}\scriptsize\itshape Facteurs issus de l'analyse exploratoire et de l'analyse des erreurs ; leur poids
+dans chaque décision sera quantifié par SHAP (global et par flux) et LIME (module 5, en cours).}
+
+\rubrique{Analyse critique}
+\begin{itemize}
+  \item \textbf{Variables sensibles et équité.} Aucune donnée personnelle n'est utilisée (adresses IP exclues).
+        Le risque équivalent est l'\textbf{empreinte système} : une valeur de fenêtre TCP donne 100\,\%
+        d'attaques car elle identifie la machine de l'attaquant ; la conserver ferait signaler des machines
+        Linux légitimes. Elle est donc exclue.
+  \item \textbf{Performance ou interprétabilité.} La régression logistique, lisible directement, perd 10 points
+        de PR-AUC, produit \textbf{9 fois plus de fausses alertes} et ne détecte presque aucune attaque FTP ou
+        SlowHTTPTest. Recommandation : \textbf{XGBoost accompagné d'explications par flux}, plutôt qu'un
+        modèle simple mais inefficace.
+\end{itemize}
+
+\rubrique{Recommandations}
+\begin{conseil}
+\begin{itemize}
+  \item \textbf{Seuil de décision autour de 0,8}, ajusté à la capacité de traitement de l'équipe.
+  \item \textbf{Agréger les alertes par source et par fenêtre de temps} : une attaque génère des centaines
+        de flux, une fausse alerte est isolée.
+  \item \textbf{Prioriser par score} et afficher l'explication de chaque alerte pour accélérer la vérification.
+  \item \textbf{Recalibrer sur le trafic réel} de l'organisation avant toute mise en production, puis
+        surveiller la dérive.
+\end{itemize}
+\end{conseil}
+
+\rubrique{Limites}
+\begin{itemize}
+  \item Données de laboratoire : attaques automatisées, lancées depuis peu de machines.
+  \item Taux d'attaques irréaliste : la précision mesurée est optimiste.
+  \item Classification flux par flux : la répétition, signature de la force brute, n'est pas exploitée.
+  \item Aucune attaque UDP ni attaque inconnue dans l'échantillon : capacité de généralisation non démontrée.
+\end{itemize}
+
+\end{minipage}
+
+% =================================================================================
+% Pied de page
+% =================================================================================
+\vfill
+{\color{trait}\rule{\linewidth}{0.5pt}}\par
+{\color{gris}\scriptsize Source : CSE-CIC-IDS2018 (Sharafaldin et al., ICISSP 2018) -- Registry of Open Data on AWS
+\hfill \github}
+
+\end{document}

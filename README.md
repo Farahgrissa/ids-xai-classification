@@ -17,7 +17,7 @@ Projet réalisé dans le cadre du module Data Mining (filières II3-IA et II3-IF
 | Application (Streamlit Community Cloud) | *à compléter* |
 | API (FastAPI, Hugging Face Spaces) | *à compléter* — documentation sur `/docs` |
 | Notebook d'analyse | [`notebooks/projet_xai.ipynb`](notebooks/projet_xai.ipynb) |
-| Synthèse (one-pager) | *à venir* |
+| Synthèse (one-pager) | [`docs/one-pager.pdf`](docs/one-pager.pdf) |
 
 ---
 

@@ -7,6 +7,7 @@ import pandas as pd
 
 from . import config as C
 
+
 def charger_jour(nom_fichier: str, frac: float = C.FRAC, random_state: int = C.RANDOM_STATE,
                  chunksize: int = 200_000, base_url: str = C.BASE_URL,
                  progression: Callable[[int], None] | None = None) -> pd.DataFrame:

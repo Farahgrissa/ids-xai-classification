@@ -10,12 +10,13 @@ import joblib
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ids_xai import __version__  # noqa: E402
-from ids_xai.artefacts import FICHIER_API  # noqa: E402
+from ids_xai import __version__
+from ids_xai.artefacts import FICHIER_API
 
 CHEMIN_MODELE = Path(os.getenv("MODELE_CHEMIN", FICHIER_API))
 ETAT: dict[str, Any] = {}
@@ -92,16 +93,19 @@ def _niveau(p: float, seuil: float) -> str:
         return "à surveiller"
     return "faible"
 
+@app.get("/", include_in_schema=False)
+def racine():
+    return RedirectResponse(url="/docs")
+
+
 
 @app.get("/health", tags=["Service"])
 def health():
-    """Vérifie que l'API répond et que le modèle est chargé."""
     return {"statut": "ok", "modele_charge": ETAT.get("bundle") is not None}
 
 
 @app.get("/model-info", tags=["Service"])
 def model_info():
-    """Modèle utilisé, variables attendues (avec leur type), seuil, métriques sur le test, versions."""
     b = _bundle()
     return {"modele": b["nom"], "seuil_par_defaut": b["seuil"], "variables": b["schema"],
             "metriques_test": b["metriques"], "versions": b["versions"], "entraine_le": b["date"]}
@@ -109,13 +113,11 @@ def model_info():
 
 @app.get("/exemple", tags=["Service"])
 def exemple():
-    """Un flux typique (médianes du jeu d'entraînement), à modifier puis envoyer à /predict."""
     return {"flux": [_bundle().get("exemple", {})]}
 
 
 @app.post("/predict", response_model=ReponsePrediction, tags=["Prédiction"])
 def predict(req: RequetePrediction):
-    """Probabilité d'attaque et décision pour chaque flux."""
     b = _bundle()
     seuil = b["seuil"] if req.seuil is None else req.seuil
     df, ignorees = _vers_dataframe(req.flux, b["schema"])

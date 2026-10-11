@@ -3,10 +3,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import commun  
-import streamlit as st 
+import commun
+import streamlit as st
 
-from ids_xai import config as C  
+from ids_xai import config as C
 
 commun.configurer_page("Détection d'intrusion explicable")
 

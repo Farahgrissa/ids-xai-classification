@@ -24,7 +24,7 @@ RANDOM_STATE = 42
 COLONNE_LABEL = "Label"
 CLASSE_NEGATIVE = "Benign"
 CIBLE = "_y"                  # 1 = attaque, 0 = normal
-COLONNE_TYPE = "type_attaque"  
+COLONNE_TYPE = "type_attaque"
 COLONNE_JOUR = "jour"
 EXCLUES = [CIBLE, COLONNE_TYPE, COLONNE_JOUR]
 

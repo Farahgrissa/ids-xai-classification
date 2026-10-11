@@ -14,8 +14,8 @@ Projet réalisé dans le cadre du module Data Mining (filières II3-IA et II3-IF
 
 | Ressource | Lien |
 |---|---|
-| Application (Streamlit Community Cloud) | *à compléter* |
-| API (FastAPI, Hugging Face Spaces) | *à compléter* — documentation sur `/docs` |
+| Application (Streamlit Community Cloud) | [ids-xai-classification.streamlit.app](https://ids-xai-classification.streamlit.app) |
+| API (FastAPI, Render) | [ids-xai-api.onrender.com](https://ids-xai-api.onrender.com) — documentation interactive : [`/docs`](https://ids-xai-api.onrender.com/docs) |
 | Notebook d'analyse | [`notebooks/projet_xai.ipynb`](notebooks/projet_xai.ipynb) |
 | Synthèse (one-pager) | [`docs/one-pager.pdf`](docs/one-pager.pdf) |
 
@@ -145,7 +145,7 @@ flowchart LR
     S3[(AWS S3<br/>CSE-CIC-IDS2018)] -->|téléchargement<br/>automatique| P[ids_xai<br/>données, préparation,<br/>modèles, évaluation]
     P --> SCR[scripts/entrainer.py]
     SCR --> M[(models/*.joblib)]
-    M --> API[API FastAPI<br/>Hugging Face Spaces]
+    M --> API[API FastAPI<br/>Render]
     M --> APP[Application Streamlit<br/>Streamlit Community Cloud]
     APP -->|POST /predict| API
 ```

@@ -8,6 +8,7 @@ from ids_xai import config as C  # noqa: E402
 from ids_xai.artefacts import (  # noqa: E402
     FICHIER_API,
     flux_exemple,
+    medianes_trafic_normal,
     sauvegarder,
     sauvegarder_modele_api,
     schema_variables,
@@ -63,7 +64,8 @@ def main():
     })
     sauvegarder_modele_api(modeles[retenu], schema_variables(jeu.X_train),
                            eval_test.loc[retenu].round(4).to_dict(), retenu,
-                           exemple=flux_exemple(jeu.X_train))
+                           exemple=flux_exemple(jeu.X_train),
+                           medianes_normal=medianes_trafic_normal(jeu.X_train, jeu.y_train))
     print(f"\nEnregistré : {chemin}\nEnregistré : {FICHIER_API}")
 
 

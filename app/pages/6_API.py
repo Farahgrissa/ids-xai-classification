@@ -6,6 +6,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import commun  # noqa: E402
 import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import plotly.express as px  # noqa: E402
 import requests  # noqa: E402
 import streamlit as st  # noqa: E402
 
@@ -83,4 +85,24 @@ if st.button("POST /predict", type="primary"):
                 f"{'attaque' if p_local >= seuil else 'normal'}")
 
 st.subheader("Expliquer un flux via l'API")
-st.caption("`POST /explain` (contributions SHAP + phrase) sera disponible après le module 5.")
+st.caption("`POST /explain` renvoie les contributions SHAP des variables (en log-odds : φ0 + Σ contributions = "
+           "logit de la probabilité) et une phrase de synthèse.")
+if st.button("POST /explain"):
+    code, rep = appeler("POST", "/explain", json={"flux": [flux], "seuil": seuil, "top": 8})
+    if code == 200:
+        e = rep["explications"][0]
+        (st.error if e["decision"] == "attaque" else st.success)(e["phrase"])
+        contrib = pd.DataFrame(e["contributions"]).iloc[::-1]
+        fig = px.bar(contrib, x="contribution", y="variable", orientation="h",
+                     color=contrib["contribution"] > 0, color_discrete_map={True: "#E45756", False: "#4C78A8"},
+                     hover_data=["valeur_lisible"],
+                     title=f"Contributions SHAP renvoyées par l'API (φ0 = {e['valeur_de_base']:.3f})")
+        fig.update_layout(showlegend=False, height=380)
+        st.plotly_chart(fig, use_container_width=True)
+        with st.expander("Réponse JSON"):
+            st.json(rep)
+    elif code == 501:
+        st.warning("L'API déployée ne fournit pas encore /explain : redéployez-la avec la dernière version.")
+    else:
+        st.error(f"API injoignable ou erreur ({code}) : {rep}")
+        st.info("L'explication locale complète (SHAP, LIME) est disponible au module 5.")

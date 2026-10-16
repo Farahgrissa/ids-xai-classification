@@ -153,51 +153,47 @@ de précision et double le nombre d'attaques manquées.
 % =================================================================================
 \begin{minipage}[t]{0.485\linewidth}
 
-\rubrique{Explications clés}
+\rubrique{Pourquoi le modèle décide (SHAP, LIME)}
 \begin{itemize}
-  \item \textbf{Taille des paquets} (variable la plus discriminante) : 52\,\% d'attaques parmi les flux à
-        paquets de moins de 65 octets, 3\,\% au-delà de 161 octets. Les attaques envoient des paquets vides
-        ou minimes.
-  \item \textbf{Durée du flux} : 68\,\% d'attaques entre 1 et 27 ms, à peine 1\,\% au-delà de 1,6 s.
-        Les outils automatisés ouvrent, envoient et coupent ; les utilisateurs gardent leurs connexions ouvertes.
-  \item \textbf{Rythme} : un écart de l'ordre de la milliseconde entre paquets signale un outil automatisé
-        (62\,\% d'attaques), une rafale de paquets un transfert normal (moins de 2\,\%).
-  \item \textbf{Relations non linéaires} : le risque se concentre au milieu des plages de valeurs, ce qui
-        explique l'avantage des modèles à base d'arbres.
+  \item \textbf{Le rythme d'abord} (1re variable SHAP) : un intervalle de 0,1 à 50 ms entre paquets envoyés
+        pousse vers l'attaque, au-delà de 0,1 s vers le normal. Effet en cloche, hors de portée d'un modèle linéaire.
+  \item \textbf{Puis le contenu et TCP} : aucun octet échangé (requête sans réponse), connexion coupée par RST
+        (+2 à +6 log-odds, signal le plus fort pour le botnet).
+  \item \textbf{Une alerte expliquée} : Hulk à 98\,\% = deux paquets à 8,4 ms d'écart, aucun octet renvoyé.
+        Une phrase de synthèse est générée pour chaque flux (application et API \texttt{/explain}).
+  \item \textbf{Fausse alerte comprise} : un flux normal court et sans réponse (33 ms) a exactement le profil Hulk.
+  \item \textbf{SHAP et LIME cohérents}, et avec l'intuition métier, si LIME est réglé localement : 2,8 variables
+        communes sur 5, même sens. Avec son noyau par défaut, LIME n'est pas fidèle (R² 0,13).
 \end{itemize}
-{\color{gris}\scriptsize\itshape Facteurs issus de l'analyse exploratoire et de l'analyse des erreurs ; leur poids
-dans chaque décision sera quantifié par SHAP (global et par flux) et LIME (module 5, en cours).}
 
 \rubrique{Analyse critique}
 \begin{itemize}
-  \item \textbf{Variables sensibles et équité.} Aucune donnée personnelle n'est utilisée (adresses IP exclues).
-        Le risque équivalent est l'\textbf{empreinte système} : une valeur de fenêtre TCP donne 100\,\%
-        d'attaques car elle identifie la machine de l'attaquant ; la conserver ferait signaler des machines
-        Linux légitimes. Elle est donc exclue.
-  \item \textbf{Performance ou interprétabilité.} La régression logistique, lisible directement, perd 10 points
-        de PR-AUC, produit \textbf{9 fois plus de fausses alertes} et ne détecte presque aucune attaque FTP ou
-        SlowHTTPTest. Recommandation : \textbf{XGBoost accompagné d'explications par flux}, plutôt qu'un
-        modèle simple mais inefficace.
+  \item \textbf{Variables sensibles et équité.} Aucune donnée personnelle (adresses IP exclues). L'équivalent est
+        l'\textbf{empreinte système} : remise dans le modèle, elle devient la 1re raison SHAP (36\,\% de l'importance)
+        et une fenêtre TCP de 225 donne 100\,\% d'attaques. Le modèle jugerait la machine, pas son comportement :
+        elle est exclue (PR-AUC 0,9997 $\rightarrow$ 0,9936). Biais restant : l'UDP est appris comme normal.
+  \item \textbf{Performance ou interprétabilité.} La régression logistique perd 10 points de PR-AUC, produit
+        \textbf{9 fois plus de fausses alertes}, et ses contributions SHAP se compensent ($\pm$50 log-odds) :
+        elle n'est pas plus lisible. Recommandation : \textbf{XGBoost avec une explication SHAP par alerte}.
 \end{itemize}
 
-\rubrique{Recommandations}
+\rubrique{Actions pour le décideur}
 \begin{conseil}
 \begin{itemize}
-  \item \textbf{Seuil de décision autour de 0,8}, ajusté à la capacité de traitement de l'équipe.
-  \item \textbf{Agréger les alertes par source et par fenêtre de temps} : une attaque génère des centaines
-        de flux, une fausse alerte est isolée.
-  \item \textbf{Prioriser par score} et afficher l'explication de chaque alerte pour accélérer la vérification.
-  \item \textbf{Recalibrer sur le trafic réel} de l'organisation avant toute mise en production, puis
-        surveiller la dérive.
+  \item \textbf{Seuil autour de 0,8}, ajusté à la capacité de traitement de l'équipe.
+  \item \textbf{Afficher la phrase et les contributions SHAP} de chaque alerte pour vérifier en quelques secondes.
+  \item \textbf{Agréger par source et par fenêtre de temps} : un flux court sans réponse isolé est une fausse
+        alerte probable, une rafale une attaque.
+  \item \textbf{Enrichir l'entraînement} (attaques UDP, FTP), recalibrer sur le trafic réel, surveiller la dérive
+        des variables de rythme.
 \end{itemize}
 \end{conseil}
 
 \rubrique{Limites}
 \begin{itemize}
-  \item Données de laboratoire : attaques automatisées, lancées depuis peu de machines.
-  \item Taux d'attaques irréaliste : la précision mesurée est optimiste.
+  \item Données de laboratoire et taux d'attaques irréaliste : la précision mesurée est optimiste.
   \item Classification flux par flux : la répétition, signature de la force brute, n'est pas exploitée.
-  \item Aucune attaque UDP ni attaque inconnue dans l'échantillon : capacité de généralisation non démontrée.
+  \item SHAP explique le modèle, pas la cause réelle ; LIME dépend du voisinage choisi.
 \end{itemize}
 
 \end{minipage}

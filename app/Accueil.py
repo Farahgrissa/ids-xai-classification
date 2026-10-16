@@ -31,7 +31,7 @@ st.markdown(
     "| 2 – Préparation | Cible et variables, valeurs manquantes, encodage, normalisation, split |\n"
     "| 3 – Modélisation | 5 modèles, hyperparamètres, validation croisée, tableau comparatif |\n"
     "| 4 – Évaluation | Métriques, ROC et précision-rappel superposées, confusion, seuil en direct |\n"
-    "| 5 – Explainable AI | SHAP, LIME, phrase d'explication *(en cours)* |\n"
+    "| 5 – Explainable AI | Permutation, SHAP (5 graphiques du cours), LIME, phrase d'explication |\n"
     "| 6 – API | Appel du service FastAPI documenté |"
 )
 

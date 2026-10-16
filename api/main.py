@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ids_xai import __version__
 from ids_xai.artefacts import FICHIER_API
+from ids_xai.explications import contributions, phrase_synthese, type_explainer, valeurs_shap
 
 CHEMIN_MODELE = Path(os.getenv("MODELE_CHEMIN", FICHIER_API))
 ETAT: dict[str, Any] = {}
@@ -36,7 +37,8 @@ app = FastAPI(
         "avec le modèle retenu (XGBoost).\n\n"
         "- `GET /exemple` fournit un flux prêt à envoyer ;\n"
         "- `POST /predict` renvoie la probabilité d'attaque et la décision au seuil choisi ;\n"
-        "- `POST /explain` renverra les contributions SHAP et la phrase d'explication (module 5)."
+        "- `POST /explain` renvoie, pour chaque flux, les contributions SHAP des variables "
+        "(φ0 + Σ contributions = logit de la probabilité) et une phrase de synthèse."
     ),
     version=__version__,
     lifespan=cycle_de_vie,
@@ -61,6 +63,37 @@ class ReponsePrediction(BaseModel):
     modele: str
     seuil: float
     resultats: list[ResultatFlux]
+    variables_ignorees: list[str] = []
+
+
+class RequeteExplication(BaseModel):
+    flux: list[dict[str, float | int | str | None]] = Field(
+        ..., min_length=1, max_length=100, description="Un ou plusieurs flux (100 au maximum).")
+    seuil: float | None = Field(None, ge=0, le=1, description="Seuil de décision (défaut : seuil du modèle)")
+    top: int = Field(5, ge=1, le=50, description="Nombre de contributions renvoyées par flux")
+
+
+class Contribution(BaseModel):
+    variable: str
+    valeur: float | None
+    valeur_lisible: str
+    contribution: float
+
+
+class ExplicationFlux(BaseModel):
+    probabilite_attaque: float
+    decision: str
+    niveau: str
+    valeur_de_base: float = Field(..., description="φ0 : prédiction moyenne du modèle, point de départ")
+    unite: str
+    contributions: list[Contribution]
+    phrase: str
+
+
+class ReponseExplication(BaseModel):
+    modele: str
+    seuil: float
+    explications: list[ExplicationFlux]
     variables_ignorees: list[str] = []
 
 
@@ -98,7 +131,6 @@ def racine():
     return RedirectResponse(url="/docs")
 
 
-
 @app.get("/health", tags=["Service"])
 def health():
     return {"statut": "ok", "modele_charge": ETAT.get("bundle") is not None}
@@ -129,7 +161,31 @@ def predict(req: RequetePrediction):
                                 niveau=_niveau(float(p), seuil)) for p in probas])
 
 
-@app.post("/explain", tags=["Explication"], status_code=501)
-def explain(req: RequetePrediction):
-    """Contributions SHAP + phrase de synthèse — **à compléter au module 5**."""
-    raise HTTPException(501, "Explications SHAP/LIME disponibles après le module 5.")
+@app.post("/explain", response_model=ReponseExplication, tags=["Explication"])
+def explain(req: RequeteExplication):
+    """Contributions SHAP (TreeExplainer) de chaque variable et phrase de synthèse.
+
+    Les contributions sont en log-odds pour XGBoost : φ0 + Σ contributions = logit(probabilité).
+    Une contribution positive pousse vers « attaque ».
+    """
+    b = _bundle()
+    if type_explainer(b["pipeline"]) != "tree":
+        raise HTTPException(501, "Explications disponibles pour les modèles à base d'arbres uniquement.")
+    seuil = b["seuil"] if req.seuil is None else req.seuil
+    df, ignorees = _vers_dataframe(req.flux, b["schema"])
+    probas = b["pipeline"].predict_proba(df)[:, 1]
+    expl, unite = valeurs_shap(b["pipeline"], df)
+    medianes = b.get("medianes_normal")
+    sortie = []
+    for i, p in enumerate(probas):
+        contrib = contributions(expl, i)
+        sortie.append(ExplicationFlux(
+            probabilite_attaque=round(float(p), 6), decision="attaque" if p >= seuil else "normal",
+            niveau=_niveau(float(p), seuil), valeur_de_base=round(float(expl.base_values[i]), 6), unite=unite,
+            contributions=[Contribution(variable=r.variable,
+                                        valeur=None if pd.isna(r.valeur) else float(r.valeur),
+                                        valeur_lisible=r.valeur_lisible,
+                                        contribution=round(float(r.contribution), 6))
+                           for r in contrib.head(req.top).itertuples()],
+            phrase=phrase_synthese(contrib, float(p), seuil, medianes)))
+    return ReponseExplication(modele=b["nom"], seuil=seuil, explications=sortie, variables_ignorees=ignorees)

@@ -105,6 +105,14 @@ ou RandomizedSearch selon la taille de l'espace de recherche, avec la **PR-AUC**
 sur la classe attaque, courbes ROC et précision-rappel superposées, matrice de confusion, analyse des
 erreurs par type d'attaque et étude de l'effet du seuil de décision.
 
+### 6. Explicabilité
+- **Globale** : importance propre au modèle (gain, coefficients), importance par permutation
+  (comparable entre modèles), SHAP en barres, beeswarm et dépendance.
+- **Locale** : SHAP en cascade (waterfall) et graphique de décision, LIME sur le même flux,
+  comparaison SHAP / LIME et phrase de synthèse générée automatiquement.
+- SHAP utilise `TreeExplainer` (valeurs exactes, en log-odds) ; les colonnes one-hot du protocole sont
+  regroupées pour revenir aux variables d'origine.
+
 ## Résultats
 
 ### Performance sur le jeu de test (7 479 flux, seuil 0,5)
@@ -132,11 +140,31 @@ les modèles, ce qui confirme l'absence de fuite de données.
   d'environ 97 % à environ 50 %. Relever le seuil améliore peu la précision et augmente rapidement le nombre
   d'attaques manquées.
 
+### Ce que révèle l'explicabilité
+- **Le rythme d'abord.** `Fwd IAT Mean` (intervalle moyen entre paquets envoyés) est la première
+  variable SHAP. Son effet est en cloche : de 0,1 à 50 ms il pousse vers l'attaque (rythme des outils
+  automatisés), au-delà de 0,1 s vers le normal. Viennent ensuite le contenu (aucun octet échangé) et
+  les connexions coupées (`RST Flag Cnt`, +2 à +6 log-odds).
+- **Erreurs comprises.** Une alerte Hulk type : deux paquets à 8,4 ms d'écart, aucun octet renvoyé.
+  La fausse alerte la plus sûre d'elle (99,8 %) est un flux normal de 33 ms sans réponse, au profil
+  identique.
+- **SHAP et LIME cohérents** si LIME est réglé localement (noyau étroit) : 2,8 des 5 variables
+  principales en commun sur 50 flux, avec le même sens. Avec son noyau par défaut, LIME donne presque
+  la même explication pour tous les flux (R² local 0,13).
+- **La régression logistique n'est pas plus lisible** : ses contributions SHAP se compensent
+  (±50 log-odds) à cause de la colinéarité des tailles de paquets.
+- **Raccourci détecté.** Avec les variables d'empreinte système, la PR-AUC monte à 0,9997, mais ces
+  variables portent 36 % de l'importance SHAP et une fenêtre TCP de 225 donne 100 % d'attaques : le
+  modèle jugerait la machine et non son comportement. Elles restent exclues.
+
 ### Recommandations opérationnelles
 - Seuil de décision autour de 0,8.
 - Agrégation des alertes par source et par fenêtre temporelle : une attaque génère de nombreux flux,
   une fausse alerte est généralement isolée.
-- Utilisation du score pour prioriser les alertes, accompagné de l'explication de chaque décision.
+- Utilisation du score pour prioriser les alertes, avec la phrase et les contributions SHAP de chaque
+  alerte (`POST /explain`).
+- Ajout d'attaques UDP et FTP à l'entraînement, recalibrage sur le trafic réel et suivi de la dérive des
+  variables de rythme.
 
 ## Architecture
 
@@ -158,7 +186,7 @@ flowchart LR
 │   ├── preparation.py    Sélection des variables, séparation, pipeline de prétraitement
 │   ├── modeles.py        Modèles, validation croisée, optimisation
 │   ├── evaluation.py     Métriques, courbes, matrice de confusion, seuil
-│   ├── explications.py   Explicabilité (SHAP, LIME) – en cours
+│   ├── explications.py   Explicabilité (permutation, SHAP, LIME, phrase de synthèse)
 │   └── artefacts.py      Sauvegarde et chargement des modèles
 ├── app/                  Application Streamlit (une page par module)
 ├── api/                  Service FastAPI
@@ -221,7 +249,7 @@ l'image Docker de l'API.
 | GET | `/model-info` | Modèle, variables attendues, seuil, métriques, versions |
 | GET | `/exemple` | Exemple de flux au format attendu |
 | POST | `/predict` | Probabilité d'attaque et décision pour un ou plusieurs flux |
-| POST | `/explain` | Contributions SHAP et explication textuelle (en cours) |
+| POST | `/explain` | Contributions SHAP des variables et phrase de synthèse pour un ou plusieurs flux |
 
 Exemple :
 
@@ -239,6 +267,20 @@ curl -X POST http://localhost:8000/predict \
     {"probabilite_attaque": 0.9971, "decision": "attaque", "niveau": "critique"}
   ],
   "variables_ignorees": []
+}
+```
+
+`POST /explain` prend le même corps (avec `top`, le nombre de contributions renvoyées) :
+
+```json
+{
+  "probabilite_attaque": 0.9836, "decision": "attaque", "niveau": "critique",
+  "valeur_de_base": -1.159, "unite": "log-odds",
+  "contributions": [
+    {"variable": "Fwd IAT Min", "valeur": 8430.0, "valeur_lisible": "8,43 ms", "contribution": 1.408},
+    {"variable": "Fwd IAT Mean", "valeur": 8430.0, "valeur_lisible": "8,43 ms", "contribution": 1.185}
+  ],
+  "phrase": "Le risque d'attaque est élevé (98,4 %, seuil 0,80) principalement à cause de : …"
 }
 ```
 
@@ -273,6 +315,14 @@ de la régression logistique.*
 ![Seuil de décision](docs/captures/module4-seuil.png)
 *Effet du seuil de décision et simulation d'un taux d'attaques réaliste (1 %) sur la précision.*
 
+### Module 5 – Explainable AI
+
+![Explications globales](docs/captures/module5-global.png)
+*Importance par permutation et SHAP : le rythme des paquets (`Fwd IAT Mean`) domine.*
+
+![Explication d'un flux](docs/captures/module5-local.png)
+*Phrase de synthèse, cascade SHAP et comparaison avec LIME pour un flux du jeu de test.*
+
 ### Module 6 – API
 
 ![Appel de l'API depuis l'application](docs/captures/module6.png)
@@ -286,11 +336,11 @@ de la régression logistique.*
 - Taux d'attaques de l'échantillon (27 %) très supérieur à celui d'un réseau réel : la précision
   mesurée est optimiste.
 - Classification flux par flux : la répétition, caractéristique de la force brute, n'est pas exploitée.
-- Absence d'attaque UDP dans l'échantillon : un déni de service UDP ne serait pas détecté.
+- Absence d'attaque UDP dans l'échantillon : le modèle a appris « UDP = normal », un déni de service
+  UDP ne serait pas détecté.
+- SHAP explique le modèle, pas la cause réelle d'un flux ; LIME dépend du voisinage choisi.
 
 **Perspectives**
-- Module d'explicabilité : SHAP (global et local), LIME, explication en langage naturel.
-- Comparaison quantitative des modèles avec et sans variables d'empreinte système.
 - Évaluation sur des familles d'attaques absentes de l'entraînement (DDoS) pour mesurer la
   généralisation.
 - Variables agrégées par source et par fenêtre temporelle.

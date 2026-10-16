@@ -41,11 +41,18 @@ def flux_exemple(X: pd.DataFrame) -> dict:
     return ex
 
 
+def medianes_trafic_normal(X: pd.DataFrame, y) -> dict:
+    """Médiane de chaque variable sur le trafic normal : point de comparaison des phrases d'explication."""
+    normal = X[pd.Series(y).to_numpy() == 0]
+    return {c: float(pd.to_numeric(normal[c], errors="coerce").median()) for c in X.columns}
+
+
 def sauvegarder_modele_api(pipeline, schema: dict, metriques: dict, nom: str, exemple: dict | None = None,
-                           seuil: float = C.SEUIL_RECOMMANDE, chemin: Path = FICHIER_API) -> Path:
+                           seuil: float = C.SEUIL_RECOMMANDE, chemin: Path = FICHIER_API,
+                           medianes_normal: dict | None = None) -> Path:
     chemin.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump({"pipeline": pipeline, "schema": schema, "metriques": metriques, "nom": nom,
-                 "exemple": exemple or {},
+                 "exemple": exemple or {}, "medianes_normal": medianes_normal,
                  "seuil": seuil, "versions": versions(),
                  "date": dt.datetime.now().isoformat(timespec="seconds")}, chemin, compress=3)
     return chemin
